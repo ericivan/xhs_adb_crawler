@@ -202,9 +202,8 @@ class XHSApp:
             if not ("FrameLayout" in cls or "LinearLayout" in cls
                     or "CardView" in cls or "RelativeLayout" in cls):
                 continue
-            # 自身文本是已知按钮则跳过
-            own_text = _text(node)
-            if own_text in self._NOTE_ITEM_NOISE:
+            # 自身文本 OR 任意子节点文本是已知按钮则跳过
+            if self._subtree_has_noise(node, self._NOTE_ITEM_NOISE):
                 continue
             # 尺寸过滤
             if not self._is_valid_note_card(node, min_w, min_h):
@@ -217,6 +216,15 @@ class XHSApp:
                 items.append(node)
 
         return items
+
+    @staticmethod
+    def _subtree_has_noise(node: ET.Element, noise_set: set) -> bool:
+        """检查节点及所有后代节点中是否有噪音文本（问一问 等 UI 按钮）。"""
+        for child in node.iter():
+            t = (child.get("text") or "").strip()
+            if t in noise_set:
+                return True
+        return False
 
     @staticmethod
     def _is_valid_note_card(node: ET.Element,
