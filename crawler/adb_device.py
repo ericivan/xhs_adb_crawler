@@ -137,23 +137,47 @@ class ADBDevice:
         self.run("pull", config.DEVICE_SCREENSHOT_PATH, local_path)
         return local_path
 
-    def dump_ui(self) -> ET.Element:
+    def dump_ui(self, retries: int = 3, retry_delay: float = 1.5) -> ET.Element:
         """
         导出当前界面 UI XML，返回解析后的根 Element。
+        uiautomator dump 在 App 繁忙时可能被 kill（rc=137），自动重试。
         """
-        self.shell(f"uiautomator dump {config.DEVICE_UI_DUMP_PATH}")
-        time.sleep(0.3)
-        fd, local_path = tempfile.mkstemp(suffix=".xml")
-        os.close(fd)
-        try:
-            self.run("pull", config.DEVICE_UI_DUMP_PATH, local_path)
-            tree = ET.parse(local_path)
-            return tree.getroot()
-        finally:
+        last_err: Exception = ADBError("dump_ui 未执行")
+        for attempt in range(retries):
+            if attempt > 0:
+                logger.debug("dump_ui 重试 %d/%d（%.1fs 后）", attempt, retries - 1, retry_delay)
+                time.sleep(retry_delay)
             try:
-                os.remove(local_path)
-            except OSError:
-                pass
+                self.shell(f"uiautomator dump {config.DEVICE_UI_DUMP_PATH}",
+                           timeout=20)
+            except ADBError as e:
+                last_err = e
+                logger.warning("uiautomator dump 失败（attempt %d）: %s", attempt + 1, e)
+                continue
+
+            time.sleep(0.3)
+            fd, local_path = tempfile.mkstemp(suffix=".xml")
+            os.close(fd)
+            try:
+                self.run("pull", config.DEVICE_UI_DUMP_PATH, local_path)
+                tree = ET.parse(local_path)
+                root = tree.getroot()
+                # 空 XML（无子节点）视为无效，继续重试
+                if len(list(root.iter("node"))) == 0:
+                    logger.warning("dump_ui 返回空 XML，重试")
+                    last_err = ADBError("UI XML 为空")
+                    continue
+                return root
+            except (ET.ParseError, ADBError) as e:
+                last_err = e
+                logger.warning("dump_ui 解析失败（attempt %d）: %s", attempt + 1, e)
+            finally:
+                try:
+                    os.remove(local_path)
+                except OSError:
+                    pass
+
+        raise ADBError(f"dump_ui 连续失败 {retries} 次: {last_err}")
 
     # ──────────────────────────────────────────────────────────────────────
     # 触控操作
