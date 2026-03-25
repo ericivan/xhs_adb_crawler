@@ -18,6 +18,9 @@ data/
 screenshots/
 *.png
 
+# 配置文件（含数据库密码，不提交）
+config.py
+
 # IDE
 .vscode/
 .idea/
