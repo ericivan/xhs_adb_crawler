@@ -66,7 +66,15 @@ class NoteCrawler:
             root = self.device.dump_ui()
             note = parse_note_detail(root, note)
 
-        logger.info("笔记抓取完成: %s", note)
+        # ── 提取 note_url & note_id ──────────────────────────────────────
+        if not note.note_id or not note.note_url:
+            extracted_id, extracted_url = self.app.extract_note_url()
+            if extracted_id and not note.note_id:
+                note.note_id = extracted_id
+            if extracted_url and not note.note_url:
+                note.note_url = extracted_url
+
+        logger.info("笔记抓取完成: %s  url=%s", note, note.note_url)
         return note
 
     def crawl_note_by_deeplink(self, note_id: str) -> Optional[Note]:

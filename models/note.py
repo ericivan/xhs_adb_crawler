@@ -33,6 +33,7 @@ class Note:
 
     # ── 抓取元数据 ───────────────────────────────────────────────────────
     crawled_at: float = field(default_factory=time.time)
+    note_url: str = ""                # 笔记完整 URL
     screenshot_path: str = ""         # 本地截图路径（可选）
 
     def to_dict(self) -> dict:

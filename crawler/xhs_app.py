@@ -299,6 +299,116 @@ class XHSApp:
         logger.warning("未找到 Tab: %s", tab_name)
 
     # ──────────────────────────────────────────────────────────────────────
+    # URL & note_id 提取
+    # ──────────────────────────────────────────────────────────────────────
+
+    def extract_note_url(self) -> tuple:
+        """
+        在笔记详情页尝试获取 note_url 和 note_id。
+
+        方式 1（快速）：从 dumpsys activity top 提取当前 intent URI
+        方式 2（可靠）：点击分享按钮 → 在分享面板找 URL 文本 / 复制链接 → 读 toast
+        返回 (note_id, note_url)
+        """
+        # ── 方式 1：activity intent ──────────────────────────────────────
+        note_id = self._note_id_from_activity()
+        if note_id:
+            url = f"https://www.xiaohongshu.com/explore/{note_id}"
+            logger.info("activity 提取 note_id: %s", note_id)
+            return note_id, url
+
+        # ── 方式 2：分享面板 ─────────────────────────────────────────────
+        note_id, url = self._note_url_via_share()
+        if url:
+            logger.info("分享面板提取 url: %s", url)
+        return note_id, url
+
+    def _note_id_from_activity(self) -> str:
+        """从 dumpsys activity top 解析当前笔记 ID。"""
+        try:
+            output = self.device.shell("dumpsys activity top")
+            # 深链接格式：xhsdiscover://item/detail?id=<note_id>
+            m = re.search(r'detail\?id=([0-9a-f]{16,})', output, re.IGNORECASE)
+            if m:
+                return m.group(1)
+            # URL 格式：/explore/<note_id>
+            m = re.search(r'/explore/([0-9a-f]{16,})', output, re.IGNORECASE)
+            if m:
+                return m.group(1)
+        except ADBError as e:
+            logger.debug("dumpsys 提取失败: %s", e)
+        return ""
+
+    def _note_url_via_share(self) -> tuple:
+        """
+        点击分享按钮，在分享面板中寻找 URL：
+          1. 分享面板打开后直接扫描是否有 URL 文本
+          2. 若无，点击「复制链接」，再扫 toast
+        最后关闭分享面板（back），保持在笔记详情页。
+        """
+        # ── 1. 找到并点击分享按钮 ────────────────────────────────────────
+        root = self.device.dump_ui()
+        if not self._tap_share_button(root):
+            logger.debug("未找到分享按钮")
+            return "", ""
+        time.sleep(config.WAIT_MEDIUM)
+
+        # ── 2. 扫描分享面板内容 ──────────────────────────────────────────
+        root = self.device.dump_ui()
+        url = self._find_url_in_ui(root)
+
+        if not url:
+            # ── 3. 点击「复制链接」──────────────────────────────────────
+            tapped = False
+            for kw in ("复制链接", "复制", "Copy Link"):
+                if self.device.tap_by_text(root, kw, exact=True):
+                    tapped = True
+                    break
+            if tapped:
+                time.sleep(config.WAIT_SHORT)
+                root = self.device.dump_ui()
+                url = self._find_url_in_ui(root)
+
+        # ── 4. 关闭分享面板，回到笔记详情 ───────────────────────────────
+        self.device.back()
+        time.sleep(config.WAIT_SHORT)
+
+        if not url:
+            return "", ""
+
+        note_id = self._parse_note_id(url)
+        return note_id, url
+
+    def _tap_share_button(self, root: ET.Element) -> bool:
+        """找到分享按钮并点击。"""
+        # content-desc 或 resource-id 含 share / 分享
+        for node in root.iter("node"):
+            desc = (node.get("content-desc") or "").lower()
+            rid  = (node.get("resource-id") or "").lower()
+            if any(k in desc for k in ("分享", "share")) or \
+               any(k in rid  for k in ("share", "forward")):
+                self.device.tap_node(node)
+                return True
+        return False
+
+    @staticmethod
+    def _find_url_in_ui(root: ET.Element) -> str:
+        """在 UI 树中寻找小红书 URL 文本。"""
+        for node in root.iter("node"):
+            t = (node.get("text") or "").strip()
+            if any(domain in t for domain in
+                   ("xiaohongshu.com", "xhslink.com", "xhsdiscover://")):
+                return t
+        return ""
+
+    @staticmethod
+    def _parse_note_id(url: str) -> str:
+        """从 URL 中解析 note_id。"""
+        m = re.search(r'/explore/([0-9a-f]{16,})', url, re.IGNORECASE) or \
+            re.search(r'[?&]id=([0-9a-f]{16,})', url, re.IGNORECASE)
+        return m.group(1) if m else ""
+
+    # ──────────────────────────────────────────────────────────────────────
     # 辅助
     # ──────────────────────────────────────────────────────────────────────
 
