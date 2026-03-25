@@ -381,6 +381,7 @@ def main():
         logger.error("ADB 错误: %s", e)
         sys.exit(1)
     finally:
+        app.quit()   # 恢复原输入法
         if sql:
             sql.close()
 

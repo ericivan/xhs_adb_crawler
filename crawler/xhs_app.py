@@ -44,6 +44,7 @@ class XHSApp:
     def __init__(self, device: ADBDevice):
         self.device = device
         self._screen_w, self._screen_h = 1080, 1920  # 默认值，连接后更新
+        self._prev_ime: str = ""                      # 启动前的输入法，退出时恢复
 
     # ──────────────────────────────────────────────────────────────────────
     # 初始化 & 启动
@@ -57,7 +58,10 @@ class XHSApp:
             logger.warning("获取屏幕尺寸失败: %s，使用默认值", e)
 
     def launch(self, force_restart: bool = False):
-        """启动小红书。"""
+        """启动小红书，并自动切换到 ADBKeyboard。"""
+        # 切换输入法（记录原输入法，退出时可恢复）
+        self._prev_ime = self.device.switch_to_adb_keyboard()
+
         if force_restart:
             self.device.stop_app(config.XHS_PACKAGE)
             time.sleep(1)
@@ -67,6 +71,10 @@ class XHSApp:
             self._dismiss_splash()
         else:
             logger.info("小红书已在前台")
+
+    def quit(self):
+        """退出爬虫，恢复原输入法。"""
+        self.device.restore_ime(self._prev_ime)
 
     def _dismiss_splash(self):
         """尝试关闭启动广告 / 权限弹窗。"""

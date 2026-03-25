@@ -192,6 +192,45 @@ class ADBDevice:
         self.swipe(cx, y1, cx, y2)
 
     # ──────────────────────────────────────────────────────────────────────
+    # 输入法管理
+    # ──────────────────────────────────────────────────────────────────────
+
+    _ADB_IME = "com.android.adbkeyboard/.AdbIME"
+
+    def get_current_ime(self) -> str:
+        """返回当前默认输入法的 IME ID。"""
+        return self.shell("settings get secure default_input_method").strip()
+
+    def set_ime(self, ime_id: str):
+        """切换默认输入法。"""
+        self.shell(f"ime enable {ime_id}")
+        self.shell(f"ime set {ime_id}")
+        time.sleep(0.5)
+        logger.info("输入法已切换: %s", ime_id)
+
+    def switch_to_adb_keyboard(self) -> str:
+        """
+        切换到 ADBKeyboard，返回切换前的输入法 ID（用于事后恢复）。
+        若 ADBKeyboard 未安装则跳过，返回空字符串。
+        """
+        prev = self.get_current_ime()
+        if prev == self._ADB_IME:
+            return prev  # 已经是 ADBKeyboard，无需切换
+        try:
+            self.set_ime(self._ADB_IME)
+            logger.info("已切换到 ADBKeyboard（原输入法: %s）", prev)
+            return prev
+        except ADBError as e:
+            logger.warning("切换 ADBKeyboard 失败（未安装？）: %s", e)
+            return ""
+
+    def restore_ime(self, ime_id: str):
+        """恢复到指定输入法（一般传 switch_to_adb_keyboard 的返回值）。"""
+        if ime_id and ime_id != self._ADB_IME:
+            self.set_ime(ime_id)
+            logger.info("已恢复输入法: %s", ime_id)
+
+    # ──────────────────────────────────────────────────────────────────────
     # 键盘 & 文本
     # ──────────────────────────────────────────────────────────────────────
 
