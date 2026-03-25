@@ -62,7 +62,7 @@ logger = logging.getLogger("xhs_crawler")
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# 存储辅助
+# 存储辅助 
 # ─────────────────────────────────────────────────────────────────────────────
 
 def build_storage(args) -> tuple:
@@ -125,7 +125,7 @@ def crawl_one_note(app: XHSApp, note_crawler: NoteCrawler,
 
 def cmd_search(args, app: XHSApp, note_crawler: NoteCrawler,
                comment_crawler: CommentCrawler,
-               js: JsonStorage, sql: SqliteStorage):
+               js: JsonStorage, sql: SqliteStorage, mysql: MysqlStorage):
     """搜索关键词并抓取笔记。"""
     keyword  = args.keyword
     n_notes  = args.notes
@@ -205,7 +205,7 @@ def cmd_search(args, app: XHSApp, note_crawler: NoteCrawler,
 
 def cmd_note(args, app: XHSApp, note_crawler: NoteCrawler,
              comment_crawler: CommentCrawler,
-             js: JsonStorage, sql: SqliteStorage):
+             js: JsonStorage, sql: SqliteStorage, mysql: MysqlStorage):
     """通过笔记 ID 列表直接抓取。"""
     note_ids = [nid.strip() for nid in args.ids.split(",") if nid.strip()]
     do_cmt   = not args.no_comments
@@ -235,7 +235,7 @@ def cmd_note(args, app: XHSApp, note_crawler: NoteCrawler,
 
 def cmd_feed(args, app: XHSApp, note_crawler: NoteCrawler,
              comment_crawler: CommentCrawler,
-             js: JsonStorage, sql: SqliteStorage):
+             js: JsonStorage, sql: SqliteStorage, mysql: MysqlStorage):
     """抓取首页信息流。"""
     n_notes = args.notes
     do_cmt  = not args.no_comments
