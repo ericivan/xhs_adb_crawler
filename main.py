@@ -134,7 +134,16 @@ def cmd_search(args, app: XHSApp, note_crawler: NoteCrawler,
 
     logger.info("=== 开始搜索: %s (最多 %d 篇) ===", keyword, n_notes)
 
-    if not app.search(keyword):
+    for _attempt in range(3):
+        try:
+            if app.search(keyword):
+                break
+            logger.warning("进入搜索结果页失败，1.5s 后重试")
+            time.sleep(1.5)
+        except ADBError as e:
+            logger.warning("搜索时 ADB 错误（%s），1.5s 后重试", e)
+            time.sleep(1.5)
+    else:
         logger.error("进入搜索结果页失败，请检查设备状态")
         return
 
@@ -187,6 +196,8 @@ def cmd_search(args, app: XHSApp, note_crawler: NoteCrawler,
                     persist(note, comments, js, sql, mysql)
                     crawled += 1
                     logger.info("进度: %d/%d  %s", crawled, n_notes, note)
+            except ADBError as e:
+                logger.warning("ADB 临时错误，跳过本条笔记: %s", e)
             except Exception as e:
                 logger.error("抓取失败: %s", e, exc_info=True)
 
