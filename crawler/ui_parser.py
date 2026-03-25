@@ -42,8 +42,15 @@ _RES_TIME     = {"time", "publish_time", "create_time"}
 
 # 小红书混淆后所有内容字段共用的 resource-id
 _OBFUSCATED_RES = "0_resource_name_obfuscated"
-# 评论输入框占位文字（需跳过）
-_COMMENT_PLACEHOLDER = {"说点什么", "写评论", "说点什么..."}
+# 需要跳过的 UI 按钮 / 占位文字（非笔记内容）
+_UI_NOISE = {
+    "说点什么", "写评论", "说点什么...",
+    "问一问", "关注", "发消息", "私信", "举报",
+    "更多", "收藏", "分享", "点赞", "评论",
+    "查看更多", "展开", "收起", "全文",
+    "笔记", "用户", "话题", "全部", "最新", "最热",
+    "发现", "首页", "消息", "我",
+}
 
 
 def _strip_prefix(res_id: str) -> str:
@@ -116,7 +123,7 @@ def parse_note_detail(root: ET.Element, note: Optional[Note] = None) -> Note:
         raw_rid = (node.get("resource-id") or "")
         if _OBFUSCATED_RES in raw_rid:
             t = _text(node)
-            if t and t not in _COMMENT_PLACEHOLDER:
+            if t and t not in _UI_NOISE:
                 obfuscated_texts.append(t)
 
     # 从混淆文本中按顺序拆分：标题(短) → 正文(长) → 互动数(纯数字)

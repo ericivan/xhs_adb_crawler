@@ -4,9 +4,12 @@
 # 本项目通过 subprocess 直接调用系统 adb 命令，无需额外第三方包。
 # 所有依赖（json, sqlite3, subprocess, xml.etree.ElementTree）均为 Python 标准库。
 #
+# ── 必须安装 ──────────────────────────────────────────────────────────────
+pymysql>=1.1.0          # MySQL 存储支持
+
 # ── 可选依赖 ──────────────────────────────────────────────────────────────
 # 中文输入：手机端安装 ADBKeyboard（无 Python 包，只需手机端 APK）
 #   https://github.com/senzhk/ADBKeyBoard
 #
 # 导出 Excel：
-# openpyxl>=3.1.0
+# openpyxl>=1.0.0

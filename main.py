@@ -40,6 +40,7 @@ from crawler.note_crawler import NoteCrawler
 from crawler.comment_crawler import CommentCrawler
 from storage.json_storage import JsonStorage
 from storage.sqlite_storage import SqliteStorage
+from storage.mysql_storage import MysqlStorage
 from models.note import Note
 from models.comment import Comment
 
@@ -65,23 +66,34 @@ logger = logging.getLogger("xhs_crawler")
 # ─────────────────────────────────────────────────────────────────────────────
 
 def build_storage(args) -> tuple:
-    """根据命令行参数返回 (json_storage | None, sqlite_storage | None)。"""
-    js  = JsonStorage(args.output)   if args.json   else None
-    sql = SqliteStorage(args.output) if args.sqlite else None
-    return js, sql
+    """返回 (json_storage | None, sqlite_storage | None, mysql_storage | None)。"""
+    js    = JsonStorage(args.output)   if args.json        else None
+    sql   = SqliteStorage(args.output) if args.sqlite      else None
+    mysql = None
+    if config.MYSQL_OUTPUT:
+        try:
+            mysql = MysqlStorage()
+        except Exception as e:
+            logger.error("MySQL 连接失败: %s，跳过 MySQL 存储", e)
+    return js, sql, mysql
 
 
 def persist(note: Note, comments: List[Comment],
-            js: JsonStorage, sql: SqliteStorage):
+            js, sql, mysql):
     """将笔记和评论写入所有启用的存储后端。"""
+    nid = note.note_id or note.title[:20]
     if js:
         js.save_note(note)
         if comments:
-            js.save_comments(note.note_id or note.title[:20], comments)
+            js.save_comments(nid, comments)
     if sql:
         sql.save_note(note)
         if comments:
-            sql.save_comments(note.note_id or note.title[:20], comments)
+            sql.save_comments(nid, comments)
+    if mysql:
+        mysql.save_note(note)
+        if comments:
+            mysql.save_comments(nid, comments)
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -170,8 +182,9 @@ def cmd_search(args, app: XHSApp, note_crawler: NoteCrawler,
                     app, note_crawler, comment_crawler,
                     crawl_comments=do_cmt, max_scrolls=max_sc,
                 )
+                note.source_keyword = keyword
                 if note.is_valid():
-                    persist(note, comments, js, sql)
+                    persist(note, comments, js, sql, mysql)
                     crawled += 1
                     logger.info("进度: %d/%d  %s", crawled, n_notes, note)
             except Exception as e:
@@ -212,7 +225,7 @@ def cmd_note(args, app: XHSApp, note_crawler: NoteCrawler,
                 max_scrolls=max_sc,
             )
             if note.is_valid():
-                persist(note, comments, js, sql)
+                persist(note, comments, js, sql, mysql)
                 logger.info("完成: %s", note)
         except Exception as e:
             logger.error("抓取失败 %s: %s", note_id, e, exc_info=True)
@@ -263,7 +276,7 @@ def cmd_feed(args, app: XHSApp, note_crawler: NoteCrawler,
                     crawl_comments=do_cmt, max_scrolls=max_sc,
                 )
                 if note.is_valid():
-                    persist(note, comments, js, sql)
+                    persist(note, comments, js, sql, mysql)
                     crawled += 1
                     logger.info("进度: %d/%d  %s", crawled, n_notes, note)
             except Exception as e:
@@ -387,25 +400,27 @@ def main():
 
     note_crawler    = NoteCrawler(device, app)
     comment_crawler = CommentCrawler(device, app)
-    js, sql         = build_storage(args)
+    js, sql, mysql  = build_storage(args)
 
     # ── 执行子命令 ──────────────────────────────────────────────────────
     try:
         if args.command == "search":
-            cmd_search(args, app, note_crawler, comment_crawler, js, sql)
+            cmd_search(args, app, note_crawler, comment_crawler, js, sql, mysql)
         elif args.command == "note":
-            cmd_note(args, app, note_crawler, comment_crawler, js, sql)
+            cmd_note(args, app, note_crawler, comment_crawler, js, sql, mysql)
         elif args.command == "feed":
-            cmd_feed(args, app, note_crawler, comment_crawler, js, sql)
+            cmd_feed(args, app, note_crawler, comment_crawler, js, sql, mysql)
     except KeyboardInterrupt:
         logger.info("用户中断")
     except ADBError as e:
         logger.error("ADB 错误: %s", e)
         sys.exit(1)
     finally:
-        app.quit()   # 恢复原输入法
+        app.quit()
         if sql:
             sql.close()
+        if mysql:
+            mysql.close()
 
     logger.info("爬虫结束，数据已保存至 %s/", args.output)
 
