@@ -165,36 +165,69 @@ class XHSApp:
     # 浏览搜索结果 / 首页信息流
     # ──────────────────────────────────────────────────────────────────────
 
+    # 点击笔记卡片时需要跳过的文字（这些是 UI 功能按钮，不是笔记）
+    _NOTE_ITEM_NOISE = {
+        "问一问", "关注", "发消息", "私信", "举报",
+        "更多", "分享", "收藏", "点赞",
+    }
+
     def get_note_items_on_screen(self, root: ET.Element) -> List[ET.Element]:
         """
         获取当前屏幕上所有笔记卡片/条目节点。
         返回可点击的容器节点列表。
+
+        过滤规则：
+          1. 节点自身文本不能是已知 UI 按钮
+          2. 节点尺寸要足够大（笔记卡片至少占屏幕宽度 1/3）
         """
+        min_w = self._screen_w // 3   # 笔记卡片最小宽度
+        min_h = 80                    # 笔记卡片最小高度(px)
+
         items = []
 
         # ── 策略 1：resource-id 匹配 ───────────────────────────────────
         for node in root.iter("node"):
             if _res_contains(node, *_RES_NOTE_ITEM):
                 if node.get("clickable") == "true":
-                    items.append(node)
-
+                    if self._is_valid_note_card(node, min_w, min_h):
+                        items.append(node)
         if items:
             return items
 
-        # ── 策略 2：寻找可点击的 FrameLayout / LinearLayout 且含图片+文字
+        # ── 策略 2：可点击容器 + 含图片文字 + 尺寸过滤 ────────────────
         for node in root.iter("node"):
             cls = node.get("class", "")
-            if node.get("clickable") == "true" and (
-                "FrameLayout" in cls or "LinearLayout" in cls or "CardView" in cls
-            ):
-                # 子节点里有 ImageView 且有 TextView
-                children_cls = [c.get("class", "") for c in node]
-                has_img  = any("ImageView" in c for c in children_cls)
-                has_text = any("TextView" in c for c in children_cls)
-                if has_img and has_text:
-                    items.append(node)
+            if node.get("clickable") != "true":
+                continue
+            if not ("FrameLayout" in cls or "LinearLayout" in cls
+                    or "CardView" in cls or "RelativeLayout" in cls):
+                continue
+            # 自身文本是已知按钮则跳过
+            own_text = _text(node)
+            if own_text in self._NOTE_ITEM_NOISE:
+                continue
+            # 尺寸过滤
+            if not self._is_valid_note_card(node, min_w, min_h):
+                continue
+            # 子节点里有 ImageView 且有 TextView
+            all_cls = [c.get("class", "") for c in node.iter()]
+            has_img  = any("ImageView" in c for c in all_cls)
+            has_text = any("TextView"  in c for c in all_cls)
+            if has_img and has_text:
+                items.append(node)
 
         return items
+
+    @staticmethod
+    def _is_valid_note_card(node: ET.Element,
+                             min_w: int, min_h: int) -> bool:
+        """通过 bounds 判断节点是否足够大（排除小按钮）。"""
+        from crawler.adb_device import ADBDevice
+        bounds = ADBDevice.get_node_bounds(node)
+        if not bounds:
+            return False
+        x1, y1, x2, y2 = bounds
+        return (x2 - x1) >= min_w and (y2 - y1) >= min_h
 
     def get_note_titles_on_screen(self, root: ET.Element) -> List[str]:
         """提取当前屏幕所有笔记标题文本（用于去重）。"""
