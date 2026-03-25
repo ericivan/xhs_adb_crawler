@@ -14,7 +14,7 @@
 
 ## 环境要求
 
-- Python 3.8+
+- Python 3.11.14（开发环境版本，3.8+ 均可运行）
 - ADB 已安装并加入 PATH（`adb version` 可正常执行）
 - 安卓手机已开启「USB 调试」或「无线调试」
 - 小红书 App 已安装（包名 `com.xingin.xhs`）
