@@ -31,13 +31,19 @@ _RE_TIME   = re.compile(
 _XHS_RES_PREFIX = "com.xingin.xhs:id/"
 
 # ── 已知的 resource-id 关键词（根据逆向/测试积累，可按需扩充）──────────────
-_RES_AUTHOR   = {"name", "nick_name", "nickname", "author_name", "user_name"}
+_RES_AUTHOR   = {"name", "nick_name", "nickname", "author_name", "user_name",
+                 "nicknametv"}          # 实测：com.xingin.xhs:id/nickNameTV
 _RES_TITLE    = {"title", "note_title"}
 _RES_CONTENT  = {"desc", "content", "note_content", "body"}
 _RES_LIKE     = {"like_count", "likes", "like_text"}
 _RES_COLLECT  = {"collect_count", "bookmark_count", "favorite_count"}
 _RES_COMMENT  = {"comment_count", "comments"}
 _RES_TIME     = {"time", "publish_time", "create_time"}
+
+# 小红书混淆后所有内容字段共用的 resource-id
+_OBFUSCATED_RES = "0_resource_name_obfuscated"
+# 评论输入框占位文字（需跳过）
+_COMMENT_PLACEHOLDER = {"说点什么", "写评论", "说点什么..."}
 
 
 def _strip_prefix(res_id: str) -> str:
@@ -72,25 +78,29 @@ def _all_texts(root: ET.Element) -> List[Tuple[str, ET.Element]]:
 def parse_note_detail(root: ET.Element, note: Optional[Note] = None) -> Note:
     """
     从笔记详情页的 UI XML 中提取笔记信息，填充并返回 Note 对象。
+
+    小红书现版本特征：
+      - 作者：resource-id = nickNameTV
+      - 标题/正文/互动数：resource-id 全被混淆为 0_resource_name_obfuscated
+        → 按出现顺序 + 内容长度区分
     """
     if note is None:
         note = Note()
 
     all_nodes = list(root.iter("node"))
 
-    # ── 1. resource-id 精确匹配 ──────────────────────────────────────────
+    # ── 1. 精确匹配已知 resource-id ──────────────────────────────────────
     for node in all_nodes:
-        rid = _res(node)
+        rid = _res(node).lower()
         t   = _text(node)
         if not t:
             continue
-
-        if rid in _RES_TITLE and not note.title:
+        if rid in _RES_AUTHOR and not note.author_name:
+            note.author_name = t
+        elif rid in _RES_TITLE and not note.title:
             note.title = t
         elif rid in _RES_CONTENT and not note.content:
             note.content = t
-        elif rid in _RES_AUTHOR and not note.author_name:
-            note.author_name = t
         elif rid in _RES_LIKE and not note.like_count:
             note.like_count = t
         elif rid in _RES_COLLECT and not note.collect_count:
@@ -100,41 +110,48 @@ def parse_note_detail(root: ET.Element, note: Optional[Note] = None) -> Note:
         elif rid in _RES_TIME and not note.publish_time:
             note.publish_time = t
 
-    # ── 2. 启发式回退（resource-id 无法匹配时）──────────────────────────
-    text_nodes = _all_texts(root)
-    texts = [t for t, _ in text_nodes]
+    # ── 2. 处理混淆字段（0_resource_name_obfuscated）────────────────────
+    obfuscated_texts = []
+    for node in all_nodes:
+        raw_rid = (node.get("resource-id") or "")
+        if _OBFUSCATED_RES in raw_rid:
+            t = _text(node)
+            if t and t not in _COMMENT_PLACEHOLDER:
+                obfuscated_texts.append(t)
 
-    # 话题 & 标签
+    # 从混淆文本中按顺序拆分：标题(短) → 正文(长) → 互动数(纯数字)
+    counts = [t for t in obfuscated_texts if _is_count(t)]
+    content_texts = [t for t in obfuscated_texts
+                     if not _is_count(t) and not _RE_TIME.search(t)
+                     and not _RE_TOPIC.match(t)]
+
+    if content_texts:
+        if not note.title:
+            # 第一条非数字文本通常是标题（相对较短）
+            note.title = content_texts[0]
+        if not note.content and len(content_texts) > 1:
+            # 第二条通常是正文（更长）
+            note.content = content_texts[1]
+        elif not note.content:
+            # 只有一条时，若超过 15 字则当正文，否则当标题
+            if len(content_texts[0]) > 15 and not note.content:
+                note.content = content_texts[0]
+
+    if len(counts) >= 3:
+        if not note.like_count:    note.like_count    = counts[0]
+        if not note.collect_count: note.collect_count = counts[1]
+        if not note.comment_count: note.comment_count = counts[2]
+
+    # ── 3. 话题 & 标签、发布时间 ─────────────────────────────────────────
+    text_nodes = _all_texts(root)
     for t, _ in text_nodes:
         if _RE_TOPIC.match(t) and t not in note.topics:
             note.topics.append(t)
-
-    # 互动数字：连续出现的纯数字/万 TextViews 通常是 点赞/收藏/评论
-    nums = [(t, n) for t, n in text_nodes if _is_count(t)]
-    if len(nums) >= 3 and not note.like_count:
-        note.like_count    = nums[0][0]
-        note.collect_count = nums[1][0]
-        note.comment_count = nums[2][0]
-
-    # 发布时间
     if not note.publish_time:
         for t, _ in text_nodes:
             if _RE_TIME.search(t):
                 note.publish_time = t
                 break
-
-    # ── 3. 全量兜底：resource-id 全部失配时，取最长文本当正文 ────────────
-    if not note.content and text_nodes:
-        # 过滤掉纯数字/话题/时间，按长度降序取第一条
-        candidates = [
-            t for t, _ in text_nodes
-            if not _is_count(t) and not _RE_TOPIC.match(t)
-            and not _RE_TIME.search(t) and len(t) > 5
-        ]
-        if candidates:
-            candidates.sort(key=len, reverse=True)
-            note.content = candidates[0]
-            logger.debug("兜底正文: %r", note.content[:40])
 
     return note
 
