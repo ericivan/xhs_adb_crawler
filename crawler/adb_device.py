@@ -7,6 +7,7 @@ adb_device.py — 对 adb 命令的轻量封装，提供：
 """
 
 import os
+import platform
 import re
 import subprocess
 import tempfile
@@ -196,16 +197,63 @@ class ADBDevice:
 
     def input_text(self, text: str):
         """
-        输入文本（使用 ADB ime 方式，支持中文需先切换输入法）。
+        输入文本，优先级：
+          1. ADBKeyboard broadcast（手机端需安装 ADBKeyboard）
+          2. 系统剪贴板 + KEYCODE_PASTE（跨平台，支持中文，无需额外 App）
+          3. adb input text 兜底（仅 ASCII 可靠）
         """
-        # 先尝试用 ADBKeyboard 输入（支持中文）
-        encoded = text.replace(" ", "%s").replace("&", "\\&")
+        # ── 方式 1：ADBKeyboard（最佳，支持中文）─────────────────────────
+        escaped = text.replace("'", "\\'")
         try:
-            self.shell(f"am broadcast -a ADB_INPUT_TEXT --es msg '{encoded}'")
+            out = self.shell(f"am broadcast -a ADB_INPUT_TEXT --es msg '{escaped}'")
+            # ADBKeyboard 成功响应时 result 不为 -1
+            if "result=-1" not in out:
+                time.sleep(0.5)
+                return
         except ADBError:
-            # fallback: 英文安全转义
-            safe = text.replace(" ", "%s")
-            self.shell(f"input text '{safe}'")
+            pass
+
+        # ── 方式 2：系统剪贴板粘贴（Windows/macOS/Linux 均支持中文）─────
+        try:
+            self._input_via_clipboard(text)
+            return
+        except Exception as e:
+            logger.debug("剪贴板输入失败: %s，降级到 input text", e)
+
+        # ── 方式 3：adb input text 兜底（中文可能乱码）──────────────────
+        safe = text.replace(" ", "%s").replace("'", "")
+        self.shell(f"input text '{safe}'")
+        time.sleep(0.5)
+
+    def _input_via_clipboard(self, text: str):
+        """
+        将文本写入本机剪贴板，再让手机执行粘贴动作。
+        支持 Windows / macOS / Linux。
+        """
+        system = platform.system()
+        if system == "Windows":
+            # clip 命令接受 UTF-16 LE stdin
+            subprocess.run(
+                "clip", input=text.encode("utf-16-le"),
+                shell=True, check=True
+            )
+        elif system == "Darwin":
+            subprocess.run(["pbcopy"], input=text.encode("utf-8"), check=True)
+        else:
+            # Linux：优先 xclip，其次 xsel
+            try:
+                subprocess.run(
+                    ["xclip", "-selection", "clipboard"],
+                    input=text.encode("utf-8"), check=True
+                )
+            except FileNotFoundError:
+                subprocess.run(
+                    ["xsel", "--clipboard", "--input"],
+                    input=text.encode("utf-8"), check=True
+                )
+        time.sleep(0.3)
+        # 手机执行粘贴
+        self.shell("input keyevent KEYCODE_PASTE")
         time.sleep(0.5)
 
     def clear_text(self, length: int = 50):
