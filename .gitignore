@@ -1,0 +1,24 @@
+__pycache__/
+*.py[cod]
+*.pyo
+.Python
+*.egg-info/
+dist/
+build/
+.env
+.venv/
+venv/
+
+# 数据输出目录（不提交实际数据）
+data/
+*.db
+*.db-journal
+
+# 截图
+screenshots/
+*.png
+
+# IDE
+.vscode/
+.idea/
+*.swp

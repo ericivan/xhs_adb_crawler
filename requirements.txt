@@ -1,0 +1,15 @@
+# 小红书 ADB 爬虫依赖
+# Python >= 3.8
+
+# ADB 辅助（可选，提供更完善的设备管理）
+pure-python-adb>=0.3.0
+
+# 中文文本输入辅助（推荐在手机上安装 ADBKeyboard 后配合使用）
+# 无需额外 Python 包，但手机端需安装:
+#   https://github.com/senzhk/ADBKeyBoard
+
+# 数据处理 & 导出（均为标准库，无需安装）
+# json, sqlite3, xml.etree.ElementTree — 内置
+
+# 可选：将 SQLite 数据导出为 Excel
+# openpyxl>=3.1.0
