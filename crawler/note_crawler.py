@@ -27,17 +27,36 @@ class NoteCrawler:
         self.device = device
         self.app = app
 
+    @staticmethod
+    def _is_video_note(root) -> bool:
+        """判断当前详情页是否是视频笔记（含 VideoView / SurfaceView / TextureView）。"""
+        for node in root.iter("node"):
+            cls = node.get("class", "")
+            if any(v in cls for v in ("VideoView", "SurfaceView", "TextureView")):
+                return True
+        return False
+
     def crawl_current_note(self, note_id: str = "") -> Note:
         """
-        抓取当前詳情页的笔记数据。
+        抓取当前详情页的笔记数据。
         调用前需确保已进入笔记详情页。
         """
         note = Note(note_id=note_id)
 
         # ── 第一屏：获取标题、作者、正文开头 ────────────────────────────
         root = self.device.dump_ui()
+
+        # 视频笔记：标题/正文在视频播放器下方，先向下滚动一点让文字进入视野
+        if self._is_video_note(root):
+            note.note_type = "video"
+            logger.debug("检测到视频笔记，向下滚动展开描述")
+            self.device.scroll_down(400)
+            time.sleep(config.WAIT_SHORT)
+            root = self.device.dump_ui()
+
         note = parse_note_detail(root, note)
-        logger.debug("第一屏解析: title=%r author=%r", note.title, note.author_name)
+        logger.debug("第一屏解析: title=%r author=%r type=%r",
+                     note.title, note.author_name, note.note_type)
 
         # ── 适当向下滚动获取更多正文（最多 2 次）────────────────────────
         if not note.content or len(note.content) < 20:
