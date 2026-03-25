@@ -329,6 +329,12 @@ def build_parser() -> argparse.ArgumentParser:
                          default=config.MAX_FEED_NOTES,
                          help="最多抓取笔记数（默认 10）")
 
+    # dump-ui 子命令（调试用）
+    sp_dump = subparsers.add_parser("dump-ui",
+                                    help="导出当前界面 UI XML，用于调试 resource-id")
+    sp_dump.add_argument("--out", "-o", default="ui_dump.xml",
+                         help="保存路径（默认 ui_dump.xml）")
+
     return parser
 
 
@@ -357,6 +363,22 @@ def main():
         sys.exit(1)
 
     logger.info("使用设备: %s", device.serial)
+
+    # ── dump-ui：只需要设备，不需要启动 App ─────────────────────────────
+    if args.command == "dump-ui":
+        import xml.etree.ElementTree as ET
+        out_path = args.out
+        root = device.dump_ui()
+        ET.ElementTree(root).write(out_path, encoding="utf-8", xml_declaration=True)
+        logger.info("UI XML 已保存: %s", os.path.abspath(out_path))
+        # 打印所有有文本且有 resource-id 的节点，方便定位字段
+        print("\n=== 有文本的节点（resource-id → text）===")
+        for node in root.iter("node"):
+            rid = node.get("resource-id", "")
+            t   = (node.get("text") or "").strip()
+            if rid and t:
+                print(f"  {rid:60s}  {t[:60]}")
+        return
 
     # ── App & Crawler 初始化 ─────────────────────────────────────────────
     app              = XHSApp(device)

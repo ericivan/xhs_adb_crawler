@@ -123,6 +123,19 @@ def parse_note_detail(root: ET.Element, note: Optional[Note] = None) -> Note:
                 note.publish_time = t
                 break
 
+    # ── 3. 全量兜底：resource-id 全部失配时，取最长文本当正文 ────────────
+    if not note.content and text_nodes:
+        # 过滤掉纯数字/话题/时间，按长度降序取第一条
+        candidates = [
+            t for t, _ in text_nodes
+            if not _is_count(t) and not _RE_TOPIC.match(t)
+            and not _RE_TIME.search(t) and len(t) > 5
+        ]
+        if candidates:
+            candidates.sort(key=len, reverse=True)
+            note.content = candidates[0]
+            logger.debug("兜底正文: %r", note.content[:40])
+
     return note
 
 

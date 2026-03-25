@@ -39,8 +39,9 @@ class Note:
         return asdict(self)
 
     def is_valid(self) -> bool:
-        """至少有标题或正文才认为是有效笔记。"""
-        return bool(self.title or self.content)
+        """至少有一个字段有值即认为有效（防止 resource-id 混淆导致漏存）。"""
+        return bool(self.title or self.content or self.author_name
+                    or self.like_count or self.topics)
 
     def __repr__(self):
         return (f"<Note id={self.note_id!r} author={self.author_name!r} "
