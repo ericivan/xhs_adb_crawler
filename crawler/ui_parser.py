@@ -42,6 +42,8 @@ _RE_COMMENT_META = re.compile(
 _RE_CMT_HEADER = re.compile(r"^共\s*\d+\s*条评论")
 # 从正文中提取 #话题 标签
 _RE_TAG_IN_CONTENT = re.compile(r"#[\w\u4e00-\u9fff·]+")
+# 视频时长格式（如 11:06），不应作为内容
+_RE_DURATION = re.compile(r"^\d{1,3}:\d{2}$")
 
 # XHS 包名前缀
 _XHS_RES_PREFIX = "com.xingin.xhs:id/"
@@ -174,7 +176,8 @@ def parse_note_detail(root: ET.Element, note: Optional[Note] = None) -> Note:
                      if not _is_count(t)
                      and not _RE_TIME.search(t)
                      and not _RE_TOPIC.match(t)
-                     and not _RE_CMT_HEADER.match(t)]
+                     and not _RE_CMT_HEADER.match(t)
+                     and not _RE_DURATION.match(t)]   # 过滤视频时长 11:06
 
     if content_texts:
         if not note.title:
