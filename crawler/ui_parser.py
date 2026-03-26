@@ -278,6 +278,13 @@ def _extract_comment_from_container(container: ET.Element) -> Comment:
     return c
 
 
+# resource-id 属于笔记本身字段的节点，评论解析时跳过（避免作者名被误识别为评论）
+_SKIP_IN_COMMENT_PARSE = (
+    _RES_AUTHOR | _RES_TITLE | _RES_CONTENT |
+    _RES_LIKE | _RES_COLLECT | _RES_COMMENT | _RES_TIME
+)
+
+
 def _heuristic_parse_comments(root: ET.Element, note_id: str,
                                start_index: int) -> List[Comment]:
     """
@@ -309,11 +316,16 @@ def _heuristic_parse_comments(root: ET.Element, note_id: str,
     i = start_pos
 
     while i < len(text_nodes):
-        t, _ = text_nodes[i]
+        t, n = text_nodes[i]
 
         # 结束标记
         if "到底了" in t:
             break
+
+        # 跳过笔记本身字段节点（matrixNickNameView/noteContentText 等）
+        if _res(n) in _SKIP_IN_COMMENT_PARSE:
+            i += 1
+            continue
 
         # 跳过所有噪音、互动数、话题、评论元信息行
         if (t in _UI_NOISE

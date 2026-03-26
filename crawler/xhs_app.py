@@ -272,11 +272,14 @@ class XHSApp:
         return self._is_note_detail_page(self.device.dump_ui())
 
     def _is_note_detail_page(self, root: ET.Element) -> bool:
-        """判断当前是否在笔记详情页。"""
+        """判断当前是否在笔记详情页（图文或视频均适用）。"""
         for node in root.iter("node"):
             rid = (node.get("resource-id") or "").lower()
             if any(k in rid for k in ("desc", "content", "note_desc",
-                                       "comment_input", "comment_bar")):
+                                       "comment_input", "comment_bar",
+                                       "notecontenttext",    # 视频笔记正文
+                                       "matrixnicknameview"  # 视频笔记作者
+                                       )):
                 return True
         return False
 

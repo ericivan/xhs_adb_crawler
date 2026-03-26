@@ -45,21 +45,15 @@ class CommentCrawler:
         seen: Set[str] = set()          # 已见评论内容去重键
         start_index = 0
 
-        # ── 1. 打开评论区 ────────────────────────────────────────────────
-        if note_type == "video":
-            # 视频笔记：评论在右侧图标，必须点击才能打开
-            logger.info("视频笔记：点击评论图标 ...")
+        # ── 1. 滚动到评论区 ──────────────────────────────────────────────
+        # 视频和图文笔记均通过滚动展开评论区（评论内联显示在笔记内容下方）
+        note_label = "视频" if note_type == "video" else "图文"
+        logger.info("%s笔记：滚动到评论区 ...", note_label)
+        if not self.app.scroll_to_comments():
+            # 降级：尝试点击评论图标（如评论在底部弹层中）
+            logger.info("滚动未找到评论区，尝试点击评论图标 ...")
             if not self.app.tap_comment_icon():
-                logger.warning("未找到评论图标，尝试滚动方式")
-                self.app.scroll_to_comments()
-        else:
-            # 图文笔记：先尝试点击底部评论图标（会显示含正文的评论面板）
-            logger.info("图文笔记：打开评论 ...")
-            if not self.app.tap_comment_icon():
-                # 降级：滚动到评论区
-                logger.info("滚动到评论区 ...")
-                if not self.app.scroll_to_comments():
-                    logger.warning("未找到评论区，直接尝试抓取")
+                logger.warning("未找到评论区，直接尝试抓取")
 
         # ── 2. 循环翻页抓取 ──────────────────────────────────────────────
         for scroll_idx in range(max_scrolls):

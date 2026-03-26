@@ -29,10 +29,16 @@ class NoteCrawler:
 
     @staticmethod
     def _is_video_note(root) -> bool:
-        """判断当前详情页是否是视频笔记（含 VideoView / SurfaceView / TextureView）。"""
+        """
+        判断当前详情页是否是视频笔记。
+        检测视频播放器类名 或 视频专属 resource-id（matrixNickNameView）。
+        """
         for node in root.iter("node"):
             cls = node.get("class", "")
+            rid = (node.get("resource-id") or "").lower()
             if any(v in cls for v in ("VideoView", "SurfaceView", "TextureView")):
+                return True
+            if "matrixnicknameview" in rid:   # 视频笔记独有
                 return True
         return False
 
@@ -43,16 +49,12 @@ class NoteCrawler:
         """
         note = Note(note_id=note_id)
 
-        # ── 第一屏：获取标题、作者、正文开头 ────────────────────────────
+        # ── 第一屏：dump 并解析 ───────────────────────────────────────────
+        # 视频笔记：noteContentText 无需滚动即可见（overlaid on video player）
         root = self.device.dump_ui()
-
-        # 视频笔记：标题/正文在视频播放器下方，先向下滚动一点让文字进入视野
         if self._is_video_note(root):
             note.note_type = "video"
-            logger.debug("检测到视频笔记，向下滚动展开描述")
-            self.device.scroll_down(400)
-            time.sleep(config.WAIT_SHORT)
-            root = self.device.dump_ui()
+            logger.debug("检测到视频笔记")
 
         note = parse_note_detail(root, note)
         logger.debug("第一屏解析: title=%r author=%r type=%r",
