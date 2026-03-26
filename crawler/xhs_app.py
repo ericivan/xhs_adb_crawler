@@ -284,6 +284,48 @@ class XHSApp:
     # 笔记详情页操作
     # ──────────────────────────────────────────────────────────────────────
 
+    def tap_comment_icon(self) -> bool:
+        """
+        点击评论图标，打开评论面板。
+        适用于视频笔记（右侧图标）和图文笔记（底部评论按钮）。
+
+        策略优先级：
+          1. content-desc 含「评论」的可点击节点（最精确）
+          2. 文本匹配「X条评论」的可点击节点
+          3. 待补充：video_comment.xml 确认 resource-id 后可精确定位
+        """
+        root = self.device.dump_ui()
+
+        # 策略 1：content-desc 含"评论"，优先取最靠右的（视频侧边栏）
+        candidates = []
+        for node in root.iter("node"):
+            if node.get("clickable") != "true":
+                continue
+            desc = (node.get("content-desc") or "")
+            rid  = (node.get("resource-id") or "").lower()
+            if "评论" in desc or "comment" in rid:
+                center = self.device.get_node_center(node)
+                if center:
+                    candidates.append((center[0], node))
+        if candidates:
+            candidates.sort(key=lambda x: -x[0])   # 最靠右优先
+            self.device.tap_node(candidates[0][1])
+            time.sleep(config.WAIT_MEDIUM)
+            return True
+
+        # 策略 2：文本含「X条评论」的可点击节点
+        for node in root.iter("node"):
+            if node.get("clickable") != "true":
+                continue
+            t = (node.get("text") or "").strip()
+            if re.search(r"\d+\s*条评论", t):
+                self.device.tap_node(node)
+                time.sleep(config.WAIT_MEDIUM)
+                return True
+
+        logger.debug("未找到评论图标，将改用滚动方式")
+        return False
+
     def scroll_to_comments(self) -> bool:
         """
         在笔记详情页向下滚动，直到进入评论区（出现"评论"相关文字）。

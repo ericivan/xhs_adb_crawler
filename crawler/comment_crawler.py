@@ -27,6 +27,7 @@ class CommentCrawler:
         self.app = app
 
     def crawl_comments(self, note_id: str = "",
+                        note_type: str = "",
                         max_scrolls: int = config.MAX_COMMENT_SCROLLS
                         ) -> List[Comment]:
         """
@@ -35,6 +36,7 @@ class CommentCrawler:
 
         Args:
             note_id:     所属笔记 ID
+            note_type:   "video" 或 "" (图文)
             max_scrolls: 最多滚动次数
         Returns:
             Comment 对象列表
@@ -43,10 +45,21 @@ class CommentCrawler:
         seen: Set[str] = set()          # 已见评论内容去重键
         start_index = 0
 
-        # ── 1. 滚动到评论区 ──────────────────────────────────────────────
-        logger.info("滚动到评论区 ...")
-        if not self.app.scroll_to_comments():
-            logger.warning("未找到评论区，直接尝试抓取")
+        # ── 1. 打开评论区 ────────────────────────────────────────────────
+        if note_type == "video":
+            # 视频笔记：评论在右侧图标，必须点击才能打开
+            logger.info("视频笔记：点击评论图标 ...")
+            if not self.app.tap_comment_icon():
+                logger.warning("未找到评论图标，尝试滚动方式")
+                self.app.scroll_to_comments()
+        else:
+            # 图文笔记：先尝试点击底部评论图标（会显示含正文的评论面板）
+            logger.info("图文笔记：打开评论 ...")
+            if not self.app.tap_comment_icon():
+                # 降级：滚动到评论区
+                logger.info("滚动到评论区 ...")
+                if not self.app.scroll_to_comments():
+                    logger.warning("未找到评论区，直接尝试抓取")
 
         # ── 2. 循环翻页抓取 ──────────────────────────────────────────────
         for scroll_idx in range(max_scrolls):
@@ -90,7 +103,8 @@ class CommentCrawler:
     def _is_comment_end(root) -> bool:
         """检测是否出现「没有更多评论」等底部提示。"""
         end_texts = ("没有更多评论", "已经到底了", "暂无评论",
-                     "还没有评论", "成为第一个评论的人", "查看全部评论")
+                     "还没有评论", "成为第一个评论的人", "查看全部评论",
+                     "到底了")  # XHS 评论底部标记「- 到底了 -」
         for node in root.iter("node"):
             t = (node.get("text") or "").strip()
             if any(kw in t for kw in end_texts):

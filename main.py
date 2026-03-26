@@ -114,6 +114,7 @@ def crawl_one_note(app: XHSApp, note_crawler: NoteCrawler,
     if crawl_comments:
         comments = comment_crawler.crawl_comments(
             note_id=note.note_id or note_id,
+            note_type=note.note_type,
             max_scrolls=max_scrolls,
         )
     return note, comments
